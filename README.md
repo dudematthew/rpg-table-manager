@@ -11,6 +11,28 @@ A web application for managing random tables for tabletop RPG games. Create, edi
 - Export tables to Markdown or CSV
 - Embed tables in other websites
 
+## Screenshots
+
+### Desktop View
+![Project List](docs/images/project-list.png)
+*Main project list view showing multiple RPG table collections*
+
+### Project Tables View
+![Project List](docs/images/project-tables-view.png)
+*List of tables in a project*
+
+### Table Editor
+![Table Editor](docs/images/table-editor.png)
+*Table editor with dice expression and range management*
+
+### Mobile View
+![Mobile Table View](docs/images/mobile-table-view.png)
+*Responsive mobile interface for easy table management*
+
+### Iframe View
+![Iframe View](docs/images/iframe-view.png)
+*Easily copy and paste the iframe code to embed the table in your website*
+
 ## Requirements
 
 - PHP 7.4 or higher
