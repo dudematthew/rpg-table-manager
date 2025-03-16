@@ -59,13 +59,13 @@ cp .env.example .env
 Edit `.env` with your database credentials and other settings.
 
 4. Set up the database:
-- Create a new MySQL database
-- Import the database schema (if provided)
-- Configure the database connection in `.env`
+   - Create a new MySQL database
+   - Import the database schema from [database/schema.sql](database/schema.sql)
+   - Configure the database connection in `.env`
 
 5. Set up your web server:
-- Point your web server to the project's public directory
-- Ensure URL rewriting is enabled
+   - Point your web server to the project's public directory
+   - Ensure URL rewriting is enabled
 
 ## Development
 
