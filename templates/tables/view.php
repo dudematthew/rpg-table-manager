@@ -103,6 +103,15 @@ $this->layout('layout', [
                 </div>
             </div>
 
+            <!-- Save indicator -->
+            <div x-show="pendingChanges" class="flex items-center mb-4 text-amber-600 text-sm">
+                <svg class="mr-2 -ml-1 w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Changes pending...
+            </div>
+
             <!-- Table -->
             <div class="-mx-4 sm:-mx-6">
                 <div class="min-w-full align-middle">
@@ -163,7 +172,7 @@ $this->layout('layout', [
                                     <div class="relative">
                                         <input type="text" 
                                             x-model="entry.result" 
-                                            @change="saveEntries"
+                                            @input="debounce(() => saveEntries())"
                                             class="form-input px-3 pr-8 w-full text-sm"
                                             placeholder="Enter result...">
                                         <div class="right-0 absolute inset-y-0 flex items-center pr-2 text-gray-400 pointer-events-none">
@@ -230,7 +239,7 @@ $this->layout('layout', [
                                         <div class="relative">
                                             <input type="text" 
                                                 x-model="entry.result" 
-                                                @change="saveEntries"
+                                                @input="debounce(() => saveEntries())"
                                                 class="form-input px-3 pr-8 w-full text-sm"
                                                 placeholder="Enter result...">
                                             <div class="right-0 absolute inset-y-0 flex items-center pr-2 text-gray-400 pointer-events-none">
@@ -268,6 +277,8 @@ function tableEditor(config) {
         diceExpression: config.diceExpression,
         minPossible: 1,
         maxPossible: 20,
+        saveTimeout: null,
+        pendingChanges: false,
         
         initDiceRange() {
             // Parse dice expression like "3d6", "d20", etc.
@@ -283,6 +294,21 @@ function tableEditor(config) {
             
             // Sort entries by min_value
             this.entries.sort((a, b) => a.min_value - b.min_value);
+        },
+        
+        // Debounce function to prevent excessive API calls
+        debounce(func, delay = 500) {
+            // Mark that we have pending changes
+            this.pendingChanges = true;
+            
+            // Clear any existing timeout
+            clearTimeout(this.saveTimeout);
+            
+            // Set a new timeout
+            this.saveTimeout = setTimeout(() => {
+                func();
+                this.pendingChanges = false;
+            }, delay);
         },
         
         fixRange(entry) {
@@ -309,7 +335,8 @@ function tableEditor(config) {
                 entry.max_value = entry.min_value;
             }
             
-            this.saveEntries();
+            // Debounce the save operation - will collect all changes
+            this.debounce(() => this.saveEntries());
         },
         
         findNextAvailableRange() {
@@ -378,11 +405,13 @@ function tableEditor(config) {
                 max_value: range ? range.max : this.minPossible,
                 result: ''
             });
+            // Immediate save for add operations
             this.saveEntries();
         },
         
         removeEntry(index) {
             this.entries.splice(index, 1);
+            // Immediate save for remove operations
             this.saveEntries();
         },
         
