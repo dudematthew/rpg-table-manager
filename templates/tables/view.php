@@ -419,8 +419,18 @@ function tableEditor(config) {
         },
 
         autofillAllRanges() {
-            let current = this.minPossible;
-            const sortedEntries = [...this.entries].sort((a, b) => a.min_value - b.min_value);
+            // Get the total range size
+            const totalRange = this.maxPossible - this.minPossible + 1;
+            const entryCount = this.entries.length;
+            
+            // If no entries, nothing to do
+            if (entryCount === 0) return;
+            
+            // Calculate the ideal size for each range
+            const idealRangeSize = totalRange / entryCount;
+            
+            // Create a copy of entries for working with
+            const workingEntries = [...this.entries];
             
             // Reset all entries to have no range
             this.entries.forEach(entry => {
@@ -428,18 +438,56 @@ function tableEditor(config) {
                 entry.max_value = '';
             });
             
-            // Auto-fill ranges for all entries
-            this.entries.forEach(entry => {
-                if (current <= this.maxPossible) {
-                    const nextEntry = sortedEntries.find(e => e.min_value > current);
-                    const maxValue = nextEntry ? nextEntry.min_value - 1 : this.maxPossible;
-                    
-                    entry.min_value = current;
-                    entry.max_value = maxValue;
-                    current = maxValue + 1;
-                }
-            });
+            // Special case: if only one entry, give it the full range
+            if (entryCount === 1) {
+                this.entries[0].min_value = this.minPossible;
+                this.entries[0].max_value = this.maxPossible;
+                this.saveEntries();
+                return;
+            }
             
+            // Calculate ranges using a more sophisticated distribution algorithm
+            let remainingValues = totalRange;
+            let remainingEntries = entryCount;
+            let currentValue = this.minPossible;
+            
+            // Distribute ranges as evenly as possible
+            for (let i = 0; i < entryCount; i++) {
+                const entry = this.entries[i];
+                
+                // Calculate size for this range
+                // For the last entry, assign all remaining values
+                let rangeSize;
+                if (i === entryCount - 1) {
+                    rangeSize = remainingValues;
+                } else {
+                    // Calculate fair share of remaining values
+                    rangeSize = Math.ceil(remainingValues / remainingEntries);
+                    
+                    // Ensure we don't create ranges that are too small at the end
+                    const minRangeSize = Math.max(1, Math.floor(idealRangeSize * 0.7));
+                    rangeSize = Math.max(minRangeSize, rangeSize);
+                    
+                    // Don't exceed remaining values
+                    rangeSize = Math.min(rangeSize, remainingValues - (remainingEntries - 1));
+                }
+                
+                // Assign range to this entry
+                entry.min_value = currentValue;
+                entry.max_value = currentValue + rangeSize - 1;
+                
+                // Update tracking variables
+                currentValue += rangeSize;
+                remainingValues -= rangeSize;
+                remainingEntries--;
+            }
+            
+            // Ensure the last entry covers up to maxPossible
+            if (this.entries[entryCount - 1].max_value < this.maxPossible) {
+                this.entries[entryCount - 1].max_value = this.maxPossible;
+            }
+            
+            // Save the changes
             this.saveEntries();
         }
     };
