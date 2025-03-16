@@ -17,7 +17,7 @@ $this->layout('layout', [
     'entries' => $table->entries->toArray(),
     'diceExpression' => $table->dice_expression
 ]), ENT_QUOTES, 'UTF-8') ?>)" 
-    x-init="initDiceRange"
+    x-init="init"
     class="space-y-6">
     
     <!-- Mobile-friendly header section -->
@@ -104,7 +104,28 @@ $this->layout('layout', [
             </div>
 
             <!-- Delete All button -->
-            <div class="flex justify-end mb-6">
+            <div class="flex justify-between mb-6">
+                <button @click="saveEntries" 
+                        :class="pendingChanges ? 'bg-amber-50 text-amber-600' : dirtyEntries ? 'bg-blue-50 text-blue-600' : 'bg-green-50 text-green-600'"
+                        class="inline-flex items-center hover:bg-green-100 px-4 py-2.5 border border-transparent rounded-md min-w-[140px] h-10 font-medium text-sm transition-colors">
+                    <template x-if="pendingChanges">
+                        <svg class="mr-2 -ml-1 w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                    </template>
+                    <template x-if="!pendingChanges && dirtyEntries">
+                        <svg class="mr-2 -ml-1 w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                        </svg>
+                    </template>
+                    <template x-if="!pendingChanges && !dirtyEntries">
+                        <svg class="mr-2 -ml-1 w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                        </svg>
+                    </template>
+                    <span x-text="pendingChanges ? 'Saving...' : dirtyEntries ? 'Save Changes' : 'Saved'"></span>
+                </button>
                 <button @click="confirmDeleteAll" 
                         class="inline-flex items-center bg-red-50 hover:bg-red-100 px-4 py-2.5 border border-transparent rounded-md h-10 font-medium text-red-600 text-sm transition-colors">
                     <svg class="mr-1.5 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -115,20 +136,11 @@ $this->layout('layout', [
             </div>
 
             <!-- Save indicator -->
-            <div x-show="pendingChanges || dirtyEntries" class="flex items-center mb-4 text-sm">
-                <div x-show="pendingChanges" class="flex items-center text-amber-600">
-                    <svg class="mr-2 -ml-1 w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Processing changes...
-                </div>
-                <div x-show="!pendingChanges && dirtyEntries" class="flex items-center text-blue-600">
-                    <svg class="mr-2 -ml-1 w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                    </svg>
-                    Unsaved changes
-                </div>
+            <div id="saveSuccess" class="hidden flex items-center mb-4 text-green-600 text-sm">
+                <svg class="mr-2 -ml-1 w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                </svg>
+                Changes saved successfully
             </div>
 
             <!-- Table -->
@@ -148,7 +160,20 @@ $this->layout('layout', [
                     <!-- Mobile cards / Desktop rows -->
                     <div class="sm:hidden divide-y divide-gray-200">
                         <template x-for="(entry, index) in entries" :key="entry.id || index">
-                            <div class="space-y-3 hover:bg-gray-50 p-6 transition-colors">
+                            <div class="space-y-3 hover:bg-gray-50 p-6 transition-colors"
+                                 draggable="true"
+                                 @dragstart="startDrag(index, $event)"
+                                 @dragend="endDrag($event)"
+                                 @dragover="dragOver(index, $event)"
+                                 @drop="drop(index, $event)">
+                                <!-- Drag handle -->
+                                <div class="flex justify-between items-center -mx-2 -mt-2 px-2 py-2 cursor-move">
+                                    <span class="font-medium text-gray-700 text-sm">Entry #<span x-text="index + 1"></span></span>
+                                    <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8h16M4 16h16" />
+                                    </svg>
+                                </div>
+                                
                                 <!-- Range section -->
                                 <div class="space-y-3">
                                     <label class="block font-medium text-gray-500 text-sm">Range</label>
@@ -157,6 +182,7 @@ $this->layout('layout', [
                                             <input type="number" 
                                                 x-model.number="entry.min_value" 
                                                 @input="fixRange(entry)"
+                                                @change="dirtyEntries = true; saveEntries()"
                                                 @blur="if(entry.min_value === '') { entry.min_value = minPossible; fixRange(entry); }"
                                                 class="form-input px-3 w-20 text-sm"
                                                 :min="minPossible"
@@ -172,6 +198,7 @@ $this->layout('layout', [
                                             <input type="number" 
                                                 x-model.number="entry.max_value" 
                                                 @input="fixRange(entry)"
+                                                @change="dirtyEntries = true; saveEntries()"
                                                 @blur="if(entry.max_value === '') { entry.max_value = entry.min_value || minPossible; fixRange(entry); }"
                                                 class="form-input px-3 w-20 text-sm"
                                                 :min="minPossible"
@@ -192,6 +219,7 @@ $this->layout('layout', [
                                         <input type="text" 
                                             x-model="entry.result" 
                                             @input="debounce(() => saveEntries())"
+                                            @change="dirtyEntries = true; saveEntries()"
                                             class="form-input px-3 pr-8 w-full text-sm"
                                             placeholder="Enter result...">
                                         <div class="right-0 absolute inset-y-0 flex items-center pr-2 text-gray-400 pointer-events-none">
@@ -216,57 +244,57 @@ $this->layout('layout', [
                         </template>
                     </div>
 
-                    <!-- Desktop table rows -->
-                    <table class="hidden sm:table min-w-full">
+                    <!-- Desktop view table -->
+                    <table class="hidden sm:table divide-y divide-gray-200 min-w-full">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th scope="col" class="px-3 py-3 w-16 font-medium text-gray-500 text-xs text-left uppercase tracking-wider">
+                                    Min
+                                </th>
+                                <th scope="col" class="px-3 py-3 w-16 font-medium text-gray-500 text-xs text-left uppercase tracking-wider">
+                                    Max
+                                </th>
+                                <th scope="col" class="px-3 py-3 font-medium text-gray-500 text-xs text-left uppercase tracking-wider">
+                                    Result
+                                </th>
+                                <th scope="col" class="relative px-3 py-3 w-24">
+                                    <span class="sr-only">Actions</span>
+                                </th>
+                            </tr>
+                        </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
-                            <template x-for="(entry, index) in entries" :key="entry.id || index">
-                                <tr class="hover:bg-gray-50 transition-colors">
-                                    <td class="py-3 pr-3 pl-4 sm:pl-6">
-                                        <div class="flex items-center gap-2">
-                                            <div class="relative sm:flex-initial flex-1">
-                                                <input type="number" 
-                                                    x-model.number="entry.min_value" 
-                                                    @input="fixRange(entry)"
-                                                    @blur="if(entry.min_value === '') { entry.min_value = minPossible; fixRange(entry); }"
-                                                    class="form-input px-3 w-20 text-sm"
-                                                    :min="minPossible"
-                                                    :max="maxPossible">
-                                                <span class="right-0 absolute inset-y-0 flex items-center pr-2 text-gray-400 pointer-events-none">
-                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                                                    </svg>
-                                                </span>
-                                            </div>
-                                            <span class="text-gray-500">-</span>
-                                            <div class="relative sm:flex-initial flex-1">
-                                                <input type="number" 
-                                                    x-model.number="entry.max_value" 
-                                                    @input="fixRange(entry)"
-                                                    @blur="if(entry.max_value === '') { entry.max_value = entry.min_value || minPossible; fixRange(entry); }"
-                                                    class="form-input px-3 w-20 text-sm"
-                                                    :min="minPossible"
-                                                    :max="maxPossible">
-                                                <span class="right-0 absolute inset-y-0 flex items-center pr-2 text-gray-400 pointer-events-none">
-                                                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
-                                                    </svg>
-                                                </span>
-                                            </div>
-                                        </div>
+                            <template x-for="(entry, index) in entries" :key="index">
+                                <tr class="hover:bg-gray-50 transition-colors cursor-move entry-row"
+                                    draggable="true"
+                                    @dragstart="startDrag(index, $event)"
+                                    @dragend="endDrag($event)"
+                                    @dragover="dragOver(index, $event)"
+                                    @drop="drop(index, $event)">
+                                    <td class="px-3 py-4 w-16 whitespace-nowrap">
+                                        <input type="number" 
+                                            x-model="entry.min_value" 
+                                            @input="fixRange(entry)"
+                                            @change="dirtyEntries = true; saveEntries()"
+                                            class="form-input w-full text-sm"
+                                            :min="minPossible"
+                                            :max="maxPossible">
                                     </td>
-                                    <td class="px-3 py-3">
-                                        <div class="relative">
-                                            <input type="text" 
-                                                x-model="entry.result" 
-                                                @input="debounce(() => saveEntries())"
-                                                class="form-input px-3 pr-8 w-full text-sm"
-                                                placeholder="Enter result...">
-                                            <div class="right-0 absolute inset-y-0 flex items-center pr-2 text-gray-400 pointer-events-none">
-                                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
-                                                </svg>
-                                            </div>
-                                        </div>
+                                    <td class="px-3 py-4 w-16 whitespace-nowrap">
+                                        <input type="number" 
+                                            x-model="entry.max_value" 
+                                            @input="fixRange(entry)"
+                                            @change="dirtyEntries = true; saveEntries()"
+                                            class="form-input w-full text-sm"
+                                            :min="minPossible"
+                                            :max="maxPossible">
+                                    </td>
+                                    <td class="px-3 py-4 whitespace-nowrap">
+                                        <input type="text" 
+                                            x-model="entry.result" 
+                                            @input="debounce(() => saveEntries())"
+                                            @change="dirtyEntries = true; saveEntries()"
+                                            class="form-input px-3 pr-8 w-full text-sm"
+                                            placeholder="Enter result...">
                                     </td>
                                     <td class="py-3 pr-4 sm:pr-6 pl-3 text-right">
                                         <button @click="removeEntry(index)" 
@@ -299,6 +327,52 @@ function tableEditor(config) {
         saveTimeout: null,
         pendingChanges: false,
         dirtyEntries: false,
+        draggedIndex: null,
+        
+        init() {
+            // Parse dice expression and initialize ranges
+            this.initDiceRange();
+            
+            // Set up refresh on visibility change (when user returns to tab)
+            document.addEventListener('visibilitychange', () => {
+                if (document.visibilityState === 'visible' && !this.pendingChanges && !this.dirtyEntries) {
+                    this.refreshFromServer();
+                }
+            });
+            
+            // Refresh data every 30 seconds if the page is visible and no edits in progress
+            setInterval(() => {
+                if (document.visibilityState === 'visible' && !this.pendingChanges && !this.dirtyEntries) {
+                    this.refreshFromServer();
+                }
+            }, 30000);
+        },
+        
+        // Fetch fresh data from the server
+        async refreshFromServer() {
+            try {
+                const response = await fetch(`${window.location.origin}<?= $basePath ?>/api/tables/${this.tableId}/entries`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    cache: 'no-store' // Always fetch fresh data
+                });
+                
+                if (!response.ok) {
+                    console.error('Failed to refresh data from server');
+                    return;
+                }
+                
+                const result = await response.json();
+                if (result && result.entries) {
+                    console.log('Refreshed data from server');
+                    this.entries = result.entries;
+                }
+            } catch (error) {
+                console.error('Error refreshing data:', error);
+            }
+        },
         
         initDiceRange() {
             // Parse dice expression like "3d6", "d20", etc.
@@ -314,10 +388,20 @@ function tableEditor(config) {
             
             // Sort entries by min_value
             this.entries.sort((a, b) => a.min_value - b.min_value);
+            
+            // Add beforeunload event to warn about unsaved changes
+            window.addEventListener('beforeunload', (event) => {
+                if (this.pendingChanges || this.dirtyEntries) {
+                    // Standard way of showing a confirmation dialog before leaving
+                    event.preventDefault();
+                    event.returnValue = '';
+                    return '';
+                }
+            });
         },
         
         // Debounce function to prevent excessive API calls
-        debounce(func, delay = 500) {
+        debounce(func, delay = 1000) {
             // Mark that we have pending changes
             this.pendingChanges = true;
             
@@ -460,16 +544,19 @@ function tableEditor(config) {
         },
         
         async saveEntries() {
-            if (!this.dirtyEntries) {
+            if (!this.dirtyEntries && !this.pendingChanges) {
                 return; // Don't save if nothing has changed
             }
+            
+            // Set pending changes to true to show the spinner
+            this.pendingChanges = true;
             
             // Reset dirty flag
             this.dirtyEntries = false;
             
             try {
                 const payload = { entries: this.entries };
-                console.log('Sending payload:', payload);
+                console.log('Sending payload to server:', payload);
                 
                 const response = await fetch(`${window.location.origin}<?= $basePath ?>/api/tables/${this.tableId}/entries`, {
                     method: 'POST',
@@ -477,11 +564,13 @@ function tableEditor(config) {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json'
                     },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(payload),
+                    // Always fetch fresh data, never use cache
+                    cache: 'no-store'
                 });
                 
                 const responseText = await response.text();
-                console.log('Raw response:', responseText);
+                console.log('Server response:', responseText);
                 
                 if (!response.ok) {
                     let errorMessage = 'Failed to save entries';
@@ -500,32 +589,14 @@ function tableEditor(config) {
                         throw new Error('Invalid response format from server');
                     }
                     
-                    // Check if the data is actually different before updating
-                    if (result.entries.length === this.entries.length) {
-                        // Check if any data has changed
-                        let hasChanges = false;
-                        
-                        // First, update IDs if needed
-                        this.entries.forEach((entry, index) => {
-                            const serverEntry = result.entries[index];
-                            
-                            // Update ID if it's new or different
-                            if (serverEntry && serverEntry.id && (!entry.id || entry.id !== serverEntry.id)) {
-                                entry.id = serverEntry.id;
-                                hasChanges = true;
-                            }
-                        });
-                        
-                        // If no changes were needed, we're done
-                        if (!hasChanges) {
-                            console.log('No changes from server, keeping current state');
-                            return;
-                        }
-                    } else {
-                        // If entry count doesn't match, we need to do a full update
-                        // This happens with add/remove operations
-                        this.entries = result.entries;
-                    }
+                    console.log('Received entries from server:', result.entries);
+                    
+                    // Always update with server data to ensure consistency
+                    this.entries = result.entries;
+                    
+                    // Force a small delay to ensure UI updates
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
                 } catch (e) {
                     console.error('Failed to parse success response:', e);
                     throw new Error('Invalid response format from server');
@@ -535,6 +606,9 @@ function tableEditor(config) {
                 alert('Failed to save changes: ' + error.message);
                 // Mark as dirty again so we retry on next save
                 this.dirtyEntries = true;
+            } finally {
+                // Always clear the pending changes flag
+                this.pendingChanges = false;
             }
         },
 
@@ -608,6 +682,82 @@ function tableEditor(config) {
             }
             
             // Save the changes
+            this.saveEntries();
+        },
+
+        startDrag(index, event) {
+            this.draggedIndex = index;
+            
+            // Set data for drag operation
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', index);
+            
+            // Add styling to the dragged element
+            const element = event.target.closest('tr') || event.target.closest('div[draggable="true"]');
+            if (element) {
+                element.classList.add('opacity-50');
+            }
+        },
+        
+        endDrag(event) {
+            // Remove styling when drag ends
+            if (this.draggedIndex !== null) {
+                const rows = document.querySelectorAll('tr.entry-row');
+                rows.forEach(row => row.classList.remove('opacity-50', 'bg-indigo-50'));
+                
+                const mobileCards = document.querySelectorAll('div[draggable="true"]');
+                mobileCards.forEach(card => card.classList.remove('opacity-50', 'bg-indigo-50'));
+                
+                this.draggedIndex = null;
+            }
+        },
+        
+        dragOver(index, event) {
+            event.preventDefault();
+            
+            // Don't do anything if hovering over the same item being dragged
+            if (this.draggedIndex === index) {
+                return;
+            }
+            
+            // Add hover styling
+            const rows = document.querySelectorAll('tr.entry-row');
+            rows.forEach(row => row.classList.remove('bg-indigo-50'));
+            
+            const mobileCards = document.querySelectorAll('div[draggable="true"]');
+            mobileCards.forEach(card => card.classList.remove('bg-indigo-50'));
+            
+            const element = event.target.closest('tr') || event.target.closest('div[draggable="true"]');
+            if (element) {
+                element.classList.add('bg-indigo-50');
+            }
+        },
+        
+        drop(index, event) {
+            event.preventDefault();
+            
+            // Get the dragged index
+            const fromIndex = this.draggedIndex;
+            const toIndex = index;
+            
+            // Don't do anything if dropping on the same item
+            if (fromIndex === toIndex) {
+                return;
+            }
+            
+            // Move the item in the array
+            const item = this.entries.splice(fromIndex, 1)[0];
+            this.entries.splice(toIndex, 0, item);
+            
+            // Reset drag state
+            this.draggedIndex = null;
+            
+            // Remove all styling
+            const rows = document.querySelectorAll('tr.entry-row');
+            rows.forEach(row => row.classList.remove('opacity-50', 'bg-indigo-50'));
+            
+            // Save the new order
+            this.dirtyEntries = true;
             this.saveEntries();
         }
     };
