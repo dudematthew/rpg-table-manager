@@ -35,6 +35,7 @@ return function (App $app) {
     $app->delete('/api/tables/{id}', TableController::class . ':destroy');
 
     // API routes for AJAX operations
+    $app->get('/api/tables/{id}/entries', TableController::class . ':getEntries');
     $app->post('/api/tables/{id}/entries', TableController::class . ':updateEntries');
 
     // Export routes

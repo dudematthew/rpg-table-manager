@@ -328,10 +328,14 @@ function tableEditor(config) {
         pendingChanges: false,
         dirtyEntries: false,
         draggedIndex: null,
+        dataVersion: null,
         
         init() {
             // Parse dice expression and initialize ranges
             this.initDiceRange();
+            
+            // Initial fetch to get the current version
+            this.refreshFromServer();
             
             // Set up refresh on visibility change (when user returns to tab)
             document.addEventListener('visibilitychange', () => {
@@ -368,6 +372,9 @@ function tableEditor(config) {
                 if (result && result.entries) {
                     console.log('Refreshed data from server');
                     this.entries = result.entries;
+                    // Store the version for optimistic concurrency control
+                    this.dataVersion = result.version;
+                    console.log('Data version:', this.dataVersion);
                 }
             } catch (error) {
                 console.error('Error refreshing data:', error);
@@ -555,7 +562,10 @@ function tableEditor(config) {
             this.dirtyEntries = false;
             
             try {
-                const payload = { entries: this.entries };
+                const payload = { 
+                    entries: this.entries,
+                    version: this.dataVersion // Include version for optimistic concurrency control
+                };
                 console.log('Sending payload to server:', payload);
                 
                 const response = await fetch(`${window.location.origin}<?= $basePath ?>/api/tables/${this.tableId}/entries`, {
@@ -574,9 +584,32 @@ function tableEditor(config) {
                 
                 if (!response.ok) {
                     let errorMessage = 'Failed to save entries';
+                    let outdated = false;
+                    let serverData = null;
+                    
                     try {
                         const errorData = JSON.parse(responseText);
                         errorMessage = errorData.error || errorMessage;
+                        outdated = errorData.outdated || false;
+                        serverData = errorData.entries || null;
+                        
+                        // If we got a version conflict (409 Conflict) and server sent updated data
+                        if (response.status === 409 && outdated && serverData) {
+                            if (confirm("Your data is outdated. Someone else has updated this table. Do you want to:\n\n" +
+                                       "- OK: Discard your changes and load the latest data\n" +
+                                       "- Cancel: Keep your changes and try to save again")) {
+                                // User chose to discard their changes and use server data
+                                this.entries = serverData;
+                                this.dataVersion = errorData.version;
+                                console.log('Updated to server version:', this.dataVersion);
+                                return; // Exit without showing error
+                            } else {
+                                // User chose to keep their changes
+                                // Mark as dirty so they can try to save again
+                                this.dirtyEntries = true;
+                                return; // Exit without showing error
+                            }
+                        }
                     } catch (e) {
                         console.error('Failed to parse error response:', e);
                     }
@@ -593,6 +626,10 @@ function tableEditor(config) {
                     
                     // Always update with server data to ensure consistency
                     this.entries = result.entries;
+                    
+                    // Update the version
+                    this.dataVersion = result.version;
+                    console.log('Updated to new version:', this.dataVersion);
                     
                     // Force a small delay to ensure UI updates
                     await new Promise(resolve => setTimeout(resolve, 100));

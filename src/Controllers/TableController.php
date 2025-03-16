@@ -64,6 +64,45 @@ class TableController extends Controller
         return $this->redirect($response, "/tables/{$table->id}");
     }
 
+    public function getEntries(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $table = DiceTable::findOrFail($args['id']);
+            $entries = $table->entries()->orderBy('min_value')->get();
+            
+            // Get the latest updated_at timestamp from entries
+            $latestTimestamp = $table->updated_at;
+            if ($entries->count() > 0) {
+                $latestEntryTimestamp = $entries->max('updated_at');
+                if ($latestEntryTimestamp && $latestEntryTimestamp > $latestTimestamp) {
+                    $latestTimestamp = $latestEntryTimestamp;
+                }
+            }
+            
+            $this->logger->info('Fetched table entries', [
+                'table_id' => $table->id,
+                'entry_count' => $entries->count(),
+                'latest_timestamp' => $latestTimestamp
+            ]);
+            
+            return $this->json($response, [
+                'entries' => $entries,
+                'version' => $latestTimestamp->timestamp
+            ]);
+            
+        } catch (\Exception $e) {
+            $this->logger->error('Error fetching table entries', [
+                'table_id' => $args['id'] ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return $this->json($response, [
+                'error' => 'Failed to fetch entries: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
     public function updateEntries(Request $request, Response $response, array $args): Response
     {
         try {
@@ -97,6 +136,35 @@ class TableController extends Controller
             
             $table = DiceTable::findOrFail($args['id']);
             
+            // Get the latest timestamp from the database
+            $entries = $table->entries()->orderBy('min_value')->get();
+            $latestTimestamp = $table->updated_at;
+            if ($entries->count() > 0) {
+                $latestEntryTimestamp = $entries->max('updated_at');
+                if ($latestEntryTimestamp && $latestEntryTimestamp > $latestTimestamp) {
+                    $latestTimestamp = $latestEntryTimestamp;
+                }
+            }
+            $currentVersion = $latestTimestamp->timestamp;
+            
+            // Check if client provided a version
+            $clientVersion = $data['version'] ?? null;
+            if ($clientVersion && $clientVersion < $currentVersion) {
+                $this->logger->warning('Client attempted to update with outdated data', [
+                    'table_id' => $table->id,
+                    'client_version' => $clientVersion,
+                    'server_version' => $currentVersion
+                ]);
+                
+                // Return current data with conflict status
+                return $this->json($response, [
+                    'error' => 'Your data is outdated. The table has been updated by someone else.',
+                    'entries' => $entries,
+                    'version' => $currentVersion,
+                    'outdated' => true
+                ], 409); // 409 Conflict
+            }
+            
             // Delete existing entries
             $table->entries()->delete();
             
@@ -122,13 +190,19 @@ class TableController extends Controller
             
             $savedEntries = $table->entries()->orderBy('min_value')->get();
             
+            // Get the new version timestamp
+            $newTimestamp = now();
+            $table->touch(); // Update the table's timestamp
+            
             $this->logger->info('Successfully updated table entries', [
                 'table_id' => $table->id,
-                'entry_count' => $savedEntries->count()
+                'entry_count' => $savedEntries->count(),
+                'new_version' => $newTimestamp->timestamp
             ]);
             
             return $this->json($response, [
-                'entries' => $savedEntries
+                'entries' => $savedEntries,
+                'version' => $newTimestamp->timestamp
             ]);
             
         } catch (\Exception $e) {
