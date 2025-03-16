@@ -1,5 +1,5 @@
-CREATE DATABASE IF NOT EXISTS m1334_rpg_table_manager ;
-USE m1334_rpg_table_manager ;
+CREATE DATABASE IF NOT EXISTS rpg_table_manager ;
+USE rpg_table_manager ;
 
 CREATE TABLE projects (
     id INT AUTO_INCREMENT PRIMARY KEY,
