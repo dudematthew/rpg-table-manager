@@ -115,12 +115,20 @@ $this->layout('layout', [
             </div>
 
             <!-- Save indicator -->
-            <div x-show="pendingChanges" class="flex items-center mb-4 text-amber-600 text-sm">
-                <svg class="mr-2 -ml-1 w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                Changes pending...
+            <div x-show="pendingChanges || dirtyEntries" class="flex items-center mb-4 text-sm">
+                <div x-show="pendingChanges" class="flex items-center text-amber-600">
+                    <svg class="mr-2 -ml-1 w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Processing changes...
+                </div>
+                <div x-show="!pendingChanges && dirtyEntries" class="flex items-center text-blue-600">
+                    <svg class="mr-2 -ml-1 w-4 h-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                    </svg>
+                    Unsaved changes
+                </div>
             </div>
 
             <!-- Table -->
@@ -290,6 +298,9 @@ function tableEditor(config) {
         maxPossible: 20,
         saveTimeout: null,
         pendingChanges: false,
+        lastSyncTime: Date.now(),
+        syncInterval: 3000, // Sync every 3 seconds at most
+        dirtyEntries: false,
         
         initDiceRange() {
             // Parse dice expression like "3d6", "d20", etc.
@@ -346,8 +357,30 @@ function tableEditor(config) {
                 entry.max_value = entry.min_value;
             }
             
+            // Mark that we have changes to save
+            this.dirtyEntries = true;
+            
             // Debounce the save operation - will collect all changes
-            this.debounce(() => this.saveEntries());
+            this.debounce(() => this.scheduleSave());
+        },
+        
+        // Schedule a save based on time since last sync
+        scheduleSave() {
+            const now = Date.now();
+            const timeSinceLastSync = now - this.lastSyncTime;
+            
+            // If it's been long enough since last sync, save immediately
+            if (timeSinceLastSync >= this.syncInterval) {
+                this.saveEntries();
+            } else {
+                // Otherwise, set a timeout to save after the interval
+                setTimeout(() => {
+                    // Only save if we still have dirty entries
+                    if (this.dirtyEntries) {
+                        this.saveEntries();
+                    }
+                }, this.syncInterval - timeSinceLastSync);
+            }
         },
         
         findNextAvailableRange() {
@@ -416,13 +449,15 @@ function tableEditor(config) {
                 max_value: range ? range.max : this.minPossible,
                 result: ''
             });
-            // Immediate save for add operations
+            // Mark as dirty and save immediately for add operations
+            this.dirtyEntries = true;
             this.saveEntries();
         },
         
         removeEntry(index) {
             this.entries.splice(index, 1);
-            // Immediate save for remove operations
+            // Mark as dirty and save immediately for remove operations
+            this.dirtyEntries = true;
             this.saveEntries();
         },
         
@@ -440,11 +475,20 @@ function tableEditor(config) {
         deleteAllEntries() {
             // Clear all entries
             this.entries = [];
-            // Immediate save
+            // Mark as dirty and save immediately
+            this.dirtyEntries = true;
             this.saveEntries();
         },
         
         async saveEntries() {
+            if (!this.dirtyEntries) {
+                return; // Don't save if nothing has changed
+            }
+            
+            // Update last sync time
+            this.lastSyncTime = Date.now();
+            this.dirtyEntries = false;
+            
             try {
                 const payload = { entries: this.entries };
                 console.log('Sending payload:', payload);
@@ -477,7 +521,22 @@ function tableEditor(config) {
                     if (!result || !result.entries) {
                         throw new Error('Invalid response format from server');
                     }
-                    this.entries = result.entries;
+                    
+                    // Instead of replacing the entire entries array, update IDs and other server-generated fields
+                    // This prevents flickering by maintaining the current state of entries being edited
+                    if (result.entries.length === this.entries.length) {
+                        // Update server-generated fields but keep current values
+                        this.entries.forEach((entry, index) => {
+                            // Only update ID and other server fields, not user-edited values
+                            if (result.entries[index] && result.entries[index].id) {
+                                entry.id = result.entries[index].id;
+                            }
+                        });
+                    } else {
+                        // If entry count doesn't match, we need to do a full update
+                        // This happens with add/remove operations
+                        this.entries = result.entries;
+                    }
                 } catch (e) {
                     console.error('Failed to parse success response:', e);
                     throw new Error('Invalid response format from server');
@@ -485,6 +544,8 @@ function tableEditor(config) {
             } catch (error) {
                 console.error('Error saving entries:', error);
                 alert('Failed to save changes: ' + error.message);
+                // Mark as dirty again so we retry on next save
+                this.dirtyEntries = true;
             }
         },
 
