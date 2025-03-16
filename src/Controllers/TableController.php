@@ -223,4 +223,31 @@ class TableController extends Controller
 
         return $this->redirect($response, "/tables/{$newTable->id}");
     }
+
+    public function destroy(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $table = DiceTable::findOrFail($args['id']);
+
+            $this->logger->info('Deleting table', [
+                'table_id' => $table->id,
+                'table_name' => $table->name
+            ]);
+
+            // Delete table (entries will be deleted via cascade)
+            $table->delete();
+
+            return $this->json($response, ['success' => true]);
+        } catch (\Exception $e) {
+            $this->logger->error('Error deleting table', [
+                'table_id' => $args['id'] ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return $this->json($response, [
+                'error' => 'Failed to delete table: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 } 
