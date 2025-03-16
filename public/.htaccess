@@ -1,5 +1,12 @@
 RewriteEngine On
 
+# Dynamically determine the base path
+RewriteCond %{REQUEST_URI}::$1 ^(/.+)/(.*)::\2$
+RewriteRule ^(.*) - [E=BASE:%1]
+
+# If the above doesn't work, uncomment and modify this line for your environment
+# RewriteBase /
+
 # Handle Front Controller pattern
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

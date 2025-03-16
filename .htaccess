@@ -1,7 +1,11 @@
 RewriteEngine On
 
-# Set the base directory
-RewriteBase /rpg-table-manager/
+# Dynamically determine the base path
+RewriteCond %{REQUEST_URI}::$1 ^(/.+)/(.*)::\2$
+RewriteRule ^(.*) - [E=BASE:%1]
+
+# If the above doesn't work, uncomment and modify this line for your environment
+# RewriteBase /rpg-table-manager/
 
 # Redirect all requests to index.php
 RewriteCond %{REQUEST_FILENAME} !-f
