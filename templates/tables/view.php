@@ -270,7 +270,7 @@ $this->layout('layout', [
                                     </td>
                                     <td class="py-3 pr-4 sm:pr-6 pl-3 text-right">
                                         <button @click="removeEntry(index)" 
-                                                class="inline-flex items-center hover:bg-red-50 px-4 py-2.5 rounded h-10 font-medium text-red-600 hover:text-red-900 text-sm transition-colors">
+                                                class="inline-flex justify-center items-center hover:bg-red-50 px-4 py-2.5 border border-transparent rounded-md h-10 font-medium text-red-600 hover:text-red-900 text-sm transition-colors">
                                             <svg class="mr-1 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
                                             </svg>
@@ -298,8 +298,6 @@ function tableEditor(config) {
         maxPossible: 20,
         saveTimeout: null,
         pendingChanges: false,
-        lastSyncTime: Date.now(),
-        syncInterval: 3000, // Sync every 3 seconds at most
         dirtyEntries: false,
         
         initDiceRange() {
@@ -361,26 +359,7 @@ function tableEditor(config) {
             this.dirtyEntries = true;
             
             // Debounce the save operation - will collect all changes
-            this.debounce(() => this.scheduleSave());
-        },
-        
-        // Schedule a save based on time since last sync
-        scheduleSave() {
-            const now = Date.now();
-            const timeSinceLastSync = now - this.lastSyncTime;
-            
-            // If it's been long enough since last sync, save immediately
-            if (timeSinceLastSync >= this.syncInterval) {
-                this.saveEntries();
-            } else {
-                // Otherwise, set a timeout to save after the interval
-                setTimeout(() => {
-                    // Only save if we still have dirty entries
-                    if (this.dirtyEntries) {
-                        this.saveEntries();
-                    }
-                }, this.syncInterval - timeSinceLastSync);
-            }
+            this.debounce(() => this.saveEntries());
         },
         
         findNextAvailableRange() {
@@ -485,8 +464,7 @@ function tableEditor(config) {
                 return; // Don't save if nothing has changed
             }
             
-            // Update last sync time
-            this.lastSyncTime = Date.now();
+            // Reset dirty flag
             this.dirtyEntries = false;
             
             try {
@@ -522,16 +500,27 @@ function tableEditor(config) {
                         throw new Error('Invalid response format from server');
                     }
                     
-                    // Instead of replacing the entire entries array, update IDs and other server-generated fields
-                    // This prevents flickering by maintaining the current state of entries being edited
+                    // Check if the data is actually different before updating
                     if (result.entries.length === this.entries.length) {
-                        // Update server-generated fields but keep current values
+                        // Check if any data has changed
+                        let hasChanges = false;
+                        
+                        // First, update IDs if needed
                         this.entries.forEach((entry, index) => {
-                            // Only update ID and other server fields, not user-edited values
-                            if (result.entries[index] && result.entries[index].id) {
-                                entry.id = result.entries[index].id;
+                            const serverEntry = result.entries[index];
+                            
+                            // Update ID if it's new or different
+                            if (serverEntry && serverEntry.id && (!entry.id || entry.id !== serverEntry.id)) {
+                                entry.id = serverEntry.id;
+                                hasChanges = true;
                             }
                         });
+                        
+                        // If no changes were needed, we're done
+                        if (!hasChanges) {
+                            console.log('No changes from server, keeping current state');
+                            return;
+                        }
                     } else {
                         // If entry count doesn't match, we need to do a full update
                         // This happens with add/remove operations
