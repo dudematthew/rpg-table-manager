@@ -1,0 +1,20 @@
+{
+    "name": "rpg-table-manager/app",
+    "description": "A web application for managing RPG dice tables",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "slim/slim": "^4.11",
+        "slim/psr7": "^1.6",
+        "php-di/php-di": "^7.0",
+        "league/plates": "^3.5",
+        "vlucas/phpdotenv": "^5.5",
+        "illuminate/database": "^10.0",
+        "monolog/monolog": "^3.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    }
+}

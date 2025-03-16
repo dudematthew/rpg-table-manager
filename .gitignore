@@ -1,0 +1,33 @@
+# Dependencies
+/vendor/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-workspace
+*.sublime-project
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/logs/
+
+# Cache
+/cache/
+*.cache
+
+# Composer
+composer.phar
+composer.lock
+
+# PHP CS Fixer
+.php-cs-fixer.cache
+.php_cs.cache 
