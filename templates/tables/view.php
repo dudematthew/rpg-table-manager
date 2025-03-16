@@ -103,6 +103,17 @@ $this->layout('layout', [
                 </div>
             </div>
 
+            <!-- Delete All button -->
+            <div class="flex justify-end mb-6">
+                <button @click="confirmDeleteAll" 
+                        class="inline-flex items-center bg-red-50 hover:bg-red-100 px-4 py-2.5 border border-transparent rounded-md h-10 font-medium text-red-600 text-sm transition-colors">
+                    <svg class="mr-1.5 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                    </svg>
+                    Clear Table
+                </button>
+            </div>
+
             <!-- Save indicator -->
             <div x-show="pendingChanges" class="flex items-center mb-4 text-amber-600 text-sm">
                 <svg class="mr-2 -ml-1 w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -412,6 +423,24 @@ function tableEditor(config) {
         removeEntry(index) {
             this.entries.splice(index, 1);
             // Immediate save for remove operations
+            this.saveEntries();
+        },
+        
+        confirmDeleteAll() {
+            if (this.entries.length === 0) {
+                alert("There are no entries to delete.");
+                return;
+            }
+            
+            if (confirm("Are you sure you want to delete all entries? This action cannot be undone.")) {
+                this.deleteAllEntries();
+            }
+        },
+        
+        deleteAllEntries() {
+            // Clear all entries
+            this.entries = [];
+            // Immediate save
             this.saveEntries();
         },
         
