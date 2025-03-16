@@ -250,4 +250,86 @@ class TableController extends Controller
             ], 500);
         }
     }
+
+    /**
+     * Handle oEmbed API requests
+     * This allows platforms like Trello to display rich previews of our tables
+     */
+    public function oembed(Request $request, Response $response): Response
+    {
+        $params = $request->getQueryParams();
+        
+        // Check if URL parameter is provided
+        if (!isset($params['url'])) {
+            return $this->json($response, [
+                'error' => 'URL parameter is required'
+            ], 400);
+        }
+        
+        $url = $params['url'];
+        $format = $params['format'] ?? 'json';
+        $maxWidth = isset($params['maxwidth']) ? (int)$params['maxwidth'] : 500;
+        $maxHeight = isset($params['maxheight']) ? (int)$params['maxheight'] : 300;
+        
+        // Only support JSON format
+        if ($format !== 'json') {
+            return $this->json($response, [
+                'error' => 'Only JSON format is supported'
+            ], 400);
+        }
+        
+        try {
+            // Extract table ID from URL
+            // Expected format: /tables/{id} or /tables/{id}/view
+            if (preg_match('#/tables/(\d+)(?:/[a-z]+)?$#', $url, $matches)) {
+                $tableId = $matches[1];
+                $table = DiceTable::with('entries')->findOrFail($tableId);
+                
+                // Get table project
+                $project = Project::findOrFail($table->project_id);
+                
+                // Build oEmbed response
+                $oembedResponse = [
+                    'version' => '1.0',
+                    'type' => 'rich',
+                    'provider_name' => 'RPG Table Manager',
+                    'provider_url' => $request->getUri()->getScheme() . '://' . $request->getUri()->getHost(),
+                    'title' => $table->name,
+                    'width' => min(500, $maxWidth),
+                    'height' => min(300, $maxHeight)
+                ];
+                
+                // Add description if available
+                if ($table->description) {
+                    $oembedResponse['description'] = $table->description;
+                } else {
+                    $oembedResponse['description'] = "Dice table for {$table->dice_expression} in project {$project->name}";
+                }
+                
+                // Generate HTML for embedding
+                $iframeUrl = $request->getUri()->getScheme() . '://' . $request->getUri()->getHost() . 
+                             $this->config->get('app.base_path') . "/tables/{$table->id}/iframe";
+                
+                $oembedResponse['html'] = "<iframe src=\"{$iframeUrl}\" width=\"{$oembedResponse['width']}\" " .
+                                         "height=\"{$oembedResponse['height']}\" frameborder=\"0\" " .
+                                         "allowtransparency=\"true\"></iframe>";
+                
+                return $this->json($response, $oembedResponse);
+            } else {
+                // URL doesn't match expected pattern
+                return $this->json($response, [
+                    'error' => 'Invalid URL format'
+                ], 400);
+            }
+        } catch (\Exception $e) {
+            $this->logger->error('Error generating oEmbed response', [
+                'url' => $url,
+                'error' => $e->getMessage()
+            ]);
+            
+            return $this->json($response, [
+                'error' => 'Failed to generate oEmbed response'
+            ], 500);
+        }
+    }
 } 

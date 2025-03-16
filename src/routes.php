@@ -43,4 +43,7 @@ return function (App $app) {
 
     // Iframe tester route
     $app->get('/tables/{id}/iframe', TableController::class . ':iframe');
+
+    // oEmbed API endpoint
+    $app->get('/api/oembed', TableController::class . ':oembed');
 }; 

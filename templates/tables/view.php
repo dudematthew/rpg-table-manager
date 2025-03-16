@@ -1,4 +1,16 @@
-<?php $this->layout('layout', ['title' => $table->name]) ?>
+<?php 
+// Generate Open Graph meta tags for this table
+$current_url = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http") . "://$_SERVER[HTTP_HOST]$_SERVER[REQUEST_URI]";
+$og_description = $table->description ?? "Dice table for {$table->dice_expression}";
+
+// Pass these variables to the layout
+$this->layout('layout', [
+    'title' => $table->name,
+    'og_type' => 'article',
+    'og_description' => $og_description,
+    'current_url' => $current_url
+]);
+?>
 
 <div x-data="tableEditor(<?= htmlspecialchars(json_encode([
     'tableId' => $table->id,
