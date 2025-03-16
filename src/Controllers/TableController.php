@@ -149,11 +149,15 @@ class TableController extends Controller
             
             // Check if client provided a version
             $clientVersion = $data['version'] ?? null;
-            if ($clientVersion && $clientVersion < $currentVersion) {
+            
+            // Only perform version check if client provided a version and it's significantly older
+            // Allow a small time difference (5 seconds) to account for clock differences
+            if ($clientVersion && ($currentVersion - $clientVersion > 5)) {
                 $this->logger->warning('Client attempted to update with outdated data', [
                     'table_id' => $table->id,
                     'client_version' => $clientVersion,
-                    'server_version' => $currentVersion
+                    'server_version' => $currentVersion,
+                    'difference' => $currentVersion - $clientVersion
                 ]);
                 
                 // Return current data with conflict status
@@ -191,18 +195,18 @@ class TableController extends Controller
             $savedEntries = $table->entries()->orderBy('min_value')->get();
             
             // Get the new version timestamp
-            $newTimestamp = now();
+            $newTimestamp = new \DateTime();
             $table->touch(); // Update the table's timestamp
             
             $this->logger->info('Successfully updated table entries', [
                 'table_id' => $table->id,
                 'entry_count' => $savedEntries->count(),
-                'new_version' => $newTimestamp->timestamp
+                'new_version' => $newTimestamp->getTimestamp()
             ]);
             
             return $this->json($response, [
                 'entries' => $savedEntries,
-                'version' => $newTimestamp->timestamp
+                'version' => $newTimestamp->getTimestamp()
             ]);
             
         } catch (\Exception $e) {

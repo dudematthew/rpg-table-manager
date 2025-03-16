@@ -180,8 +180,8 @@ $this->layout('layout', [
                                     <div class="flex items-center gap-3">
                                         <div class="relative flex-1">
                                             <input type="number" 
-                                                x-model.number="entry.min_value" 
-                                                @input="fixRange(entry)"
+                                                x-model="entry.min_value" 
+                                                @input="fixRange(entry); handleInputChange()"
                                                 @change="dirtyEntries = true; saveEntries()"
                                                 @blur="if(entry.min_value === '') { entry.min_value = minPossible; fixRange(entry); }"
                                                 class="form-input px-3 w-20 text-sm"
@@ -196,8 +196,8 @@ $this->layout('layout', [
                                         <span class="text-gray-500">-</span>
                                         <div class="relative flex-1">
                                             <input type="number" 
-                                                x-model.number="entry.max_value" 
-                                                @input="fixRange(entry)"
+                                                x-model="entry.max_value" 
+                                                @input="fixRange(entry); handleInputChange()"
                                                 @change="dirtyEntries = true; saveEntries()"
                                                 @blur="if(entry.max_value === '') { entry.max_value = entry.min_value || minPossible; fixRange(entry); }"
                                                 class="form-input px-3 w-20 text-sm"
@@ -218,7 +218,7 @@ $this->layout('layout', [
                                     <div class="relative">
                                         <input type="text" 
                                             x-model="entry.result" 
-                                            @input="debounce(() => saveEntries())"
+                                            @input="handleInputChange()"
                                             @change="dirtyEntries = true; saveEntries()"
                                             class="form-input px-3 pr-8 w-full text-sm"
                                             placeholder="Enter result...">
@@ -273,7 +273,7 @@ $this->layout('layout', [
                                     <td class="px-3 py-4 w-16 whitespace-nowrap">
                                         <input type="number" 
                                             x-model="entry.min_value" 
-                                            @input="fixRange(entry)"
+                                            @input="fixRange(entry); handleInputChange()"
                                             @change="dirtyEntries = true; saveEntries()"
                                             class="form-input w-full text-sm"
                                             :min="minPossible"
@@ -282,7 +282,7 @@ $this->layout('layout', [
                                     <td class="px-3 py-4 w-16 whitespace-nowrap">
                                         <input type="number" 
                                             x-model="entry.max_value" 
-                                            @input="fixRange(entry)"
+                                            @input="fixRange(entry); handleInputChange()"
                                             @change="dirtyEntries = true; saveEntries()"
                                             class="form-input w-full text-sm"
                                             :min="minPossible"
@@ -291,7 +291,7 @@ $this->layout('layout', [
                                     <td class="px-3 py-4 whitespace-nowrap">
                                         <input type="text" 
                                             x-model="entry.result" 
-                                            @input="debounce(() => saveEntries())"
+                                            @input="handleInputChange()"
                                             @change="dirtyEntries = true; saveEntries()"
                                             class="form-input px-3 pr-8 w-full text-sm"
                                             placeholder="Enter result...">
@@ -334,8 +334,9 @@ function tableEditor(config) {
             // Parse dice expression and initialize ranges
             this.initDiceRange();
             
-            // Initial fetch to get the current version
-            this.refreshFromServer();
+            // Initialize version from initial data
+            // We'll use the current timestamp as initial version if none provided
+            this.dataVersion = Math.floor(Date.now() / 1000);
             
             // Set up refresh on visibility change (when user returns to tab)
             document.addEventListener('visibilitychange', () => {
@@ -354,6 +355,12 @@ function tableEditor(config) {
         
         // Fetch fresh data from the server
         async refreshFromServer() {
+            // Don't refresh if there are pending changes or dirty entries
+            if (this.pendingChanges || this.dirtyEntries) {
+                console.log('Skipping refresh because there are pending changes or dirty entries');
+                return;
+            }
+            
             try {
                 const response = await fetch(`${window.location.origin}<?= $basePath ?>/api/tables/${this.tableId}/entries`, {
                     method: 'GET',
@@ -412,6 +419,9 @@ function tableEditor(config) {
             // Mark that we have pending changes
             this.pendingChanges = true;
             
+            // Also mark that we have dirty entries
+            this.dirtyEntries = true;
+            
             // Clear any existing timeout
             clearTimeout(this.saveTimeout);
             
@@ -423,6 +433,9 @@ function tableEditor(config) {
         },
         
         fixRange(entry) {
+            // Mark that we have dirty entries
+            this.dirtyEntries = true;
+            
             // Handle empty or invalid inputs
             if (entry.min_value === '' || entry.min_value === null || isNaN(entry.min_value)) {
                 entry.min_value = '';
@@ -441,16 +454,10 @@ function tableEditor(config) {
             entry.min_value = Math.max(this.minPossible, Math.min(this.maxPossible, entry.min_value));
             entry.max_value = Math.max(this.minPossible, Math.min(this.maxPossible, entry.max_value));
             
-            // Ensure min_value <= max_value
-            if (entry.min_value > entry.max_value) {
+            // Ensure max_value is not less than min_value
+            if (entry.max_value < entry.min_value) {
                 entry.max_value = entry.min_value;
             }
-            
-            // Mark that we have changes to save
-            this.dirtyEntries = true;
-            
-            // Debounce the save operation - will collect all changes
-            this.debounce(() => this.saveEntries());
         },
         
         findNextAvailableRange() {
@@ -558,7 +565,10 @@ function tableEditor(config) {
             // Set pending changes to true to show the spinner
             this.pendingChanges = true;
             
-            // Reset dirty flag
+            // Store the dirty flag state to restore it if needed
+            const wasDirty = this.dirtyEntries;
+            
+            // Reset dirty flag temporarily - we'll set it back if there's an error
             this.dirtyEntries = false;
             
             try {
@@ -613,6 +623,9 @@ function tableEditor(config) {
                     } catch (e) {
                         console.error('Failed to parse error response:', e);
                     }
+                    
+                    // Restore the dirty flag since we couldn't save
+                    this.dirtyEntries = wasDirty;
                     throw new Error(errorMessage);
                 }
                 
@@ -636,6 +649,8 @@ function tableEditor(config) {
                     
                 } catch (e) {
                     console.error('Failed to parse success response:', e);
+                    // Restore the dirty flag since we couldn't process the response
+                    this.dirtyEntries = wasDirty;
                     throw new Error('Invalid response format from server');
                 }
             } catch (error) {
@@ -796,6 +811,14 @@ function tableEditor(config) {
             // Save the new order
             this.dirtyEntries = true;
             this.saveEntries();
+        },
+
+        handleInputChange() {
+            // Mark that we have dirty entries
+            this.dirtyEntries = true;
+            
+            // Debounce the save operation
+            this.debounce(() => this.saveEntries());
         }
     };
 }
